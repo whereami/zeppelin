@@ -6,8 +6,6 @@ import org.apache.zeppelin.interpreter.InterpreterContext
 
 /**
   * Template context to hand over the result set of CQL execution
-  *
-  * TODO A template may need to use bound objects sent by other paragraphs
   */
 class TemplateContext(interpreterContext: InterpreterContext,
                       val columnsDefinitions: Seq[(String, DataType)],
