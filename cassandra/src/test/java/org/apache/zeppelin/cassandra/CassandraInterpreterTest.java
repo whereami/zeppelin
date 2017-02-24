@@ -196,7 +196,7 @@ public class CassandraInterpreterTest {
                 "The Way You Are\tTears for Fears\t1983\n" +
                 "Primitive\tSoulfly\t2003\n");
     }
-    
+
     @Test
     public void should_throw_statement_not_having_semi_colon() throws Exception {
         //Given
@@ -724,6 +724,77 @@ public class CassandraInterpreterTest {
         //Then
         assertThat(actual.code()).isEqualTo(Code.SUCCESS);
         assertThat(reformatHtml(actual.message().get(0).getData())).isEqualTo(expected);
+    }
+
+    @Test
+    public void should_execute_statement_with_template() throws Exception {
+        //Given
+        String query = "USE TEMPLATE \"\"\"\n" +
+                "<% escapeMarkup = false %>\n" +
+                "<%@ val columnsDefinitions: Seq[(String, DataType)]%>\n" +
+                "<%@ val rows: Seq[Row]%>\n" +
+                "<table>\n" +
+                "\t<thread>\n" +
+                "<%= columnsDefinitions.map(_._1).mkString(\"<th>\", \"</th><th>\", \"</th>\") %>\n" +
+                "\t\t</thead>\n" +
+                "\t<tbody>\n" +
+                "<% rows.foreach{row => %>\n" +
+                "\t\t<tr>\n" +
+                "<%= columnsDefinitions.map{case (name, dataType) => if(row.isNull(name)) \"NULL\" else row.getObject(name).toString}.mkString(\"\t\t\t<td>\", \"</td><td>\", \"</td>\") %>\n" +
+                "\t\t</tr>\n" +
+                "<%}%>\n" +
+                "\t</tbody>\n" +
+                "</table>\n" +
+                "\"\"\";\n" +
+                "SELECT * FROM zeppelin.artists;";
+
+
+        //When
+        final InterpreterResult actual = interpreter.interpret(query, intrContext);
+
+        //Then
+        assertThat(actual.code()).isEqualTo(Code.SUCCESS);
+        assertThat(actual.message().size()).isEqualTo(1);
+        assertThat(actual.message().get(0).getType()).isEqualTo(InterpreterResult.Type.HTML);
+        assertThat(actual.message().get(0).getData()).contains("<td>Bogdan Raczynski</td>");
+    }
+
+    @Test
+    public void should_execute_statement_with_template_and_angular() throws Exception {
+        //Given
+        AngularObjectRegistry angularObjectRegistry = new AngularObjectRegistry("cassandra", null);
+        when(intrContext.getAngularObjectRegistry()).thenReturn(angularObjectRegistry);
+        when(intrContext.getAngularObjectRegistry().add("title", "Artists", intrContext.getNoteId(), intrContext.getParagraphId()).get())
+                .thenReturn("Artists");
+
+        String query = "USE TEMPLATE \"\"\"\n" +
+                "<% escapeMarkup = false %>\n" +
+                "<%@ val columnsDefinitions: Seq[(String, DataType)]%>\n" +
+                "<%@ val rows: Seq[Row]%>\n" +
+                "<%@ val z: TemplateContext%>\n" +
+                "<h1><%=z.angular(\"title\")%></h1>\n" +
+                "<table>\n" +
+                "\t<thread>\n" +
+                "<%= columnsDefinitions.map(_._1).mkString(\"<th>\", \"</th><th>\", \"</th>\") %>\n" +
+                "\t\t</thead>\n" +
+                "\t<tbody>\n" +
+                "<% rows.foreach{row => %>\n" +
+                "\t\t<tr>\n" +
+                "<%= columnsDefinitions.map{case (name, dataType) => if(row.isNull(name)) \"NULL\" else row.getObject(name).toString}.mkString(\"\t\t\t<td>\", \"</td><td>\", \"</td>\") %>\n" +
+                "\t\t</tr>\n" +
+                "<%}%>\n" +
+                "\t</tbody>\n" +
+                "</table>\n" +
+                "\"\"\";\n" +
+                "SELECT * FROM zeppelin.artists;";
+        //When
+        final InterpreterResult actual = interpreter.interpret(query, intrContext);
+
+        //Then
+        assertThat(actual.code()).isEqualTo(Code.SUCCESS);
+        assertThat(actual.message().size()).isEqualTo(1);
+        assertThat(actual.message().get(0).getType()).isEqualTo(InterpreterResult.Type.HTML);
+        assertThat(actual.message().get(0).getData()).contains("<h1>Artists</h1>");
     }
 
     private static String reformatHtml(String rawHtml) {

@@ -16,25 +16,33 @@
  */
 package org.apache.zeppelin.cassandra
 
+import java.io.{PrintWriter, StringWriter}
 import java.util.UUID
 
+import com.datastax.driver.core._
 import com.datastax.driver.core.utils.UUIDs
+import com.google.common.hash.{HashCode, Hashing}
 import org.apache.zeppelin.cassandra.MetaDataHierarchy._
-import org.fusesource.scalate.TemplateEngine
+import org.apache.zeppelin.interpreter.{InterpreterContext, InterpreterException}
+import org.fusesource.scalate.{DefaultRenderContext, Template, TemplateEngine}
 
 import scala.collection.JavaConverters._
-
-import com.datastax.driver.core._
-
 import scala.collection.immutable.ListMap
+import scala.collection.mutable
 
 /**
- * Format and display
- * schema meta data
- */
+  * Format and display
+  * schema meta data
+  */
 object DisplaySystem {
 
   val engine = new TemplateEngine
+
+  /**
+    * Append import statements for Cassandra driver and TemplateContext
+    */
+  engine.importStatements ++= List("import _root_.com.datastax.driver.core._",
+    "import _root_.org.apache.zeppelin.cassandra.TemplateContext")
 
   val CLUSTER_DETAILS_TEMPLATE = "scalate/clusterDetails.ssp"
   val KEYSPACE_DETAILS_TEMPLATE = "scalate/keyspaceDetails.ssp"
@@ -61,7 +69,42 @@ object DisplaySystem {
   val CLUSTER_CONTENT_TEMPLATE = "scalate/clusterContent.ssp"
   val KEYSPACE_CONTENT_TEMPLATE = "scalate/keyspaceContent.ssp"
 
+  object TemplateDisplay {
 
+    val templates: mutable.Map[String, (HashCode, Template)] = mutable.Map()
+
+    def format(context: TemplateContext): String = {
+
+      templates.get(context.paragraphId) match {
+        case Some((_, template)) => {
+          val out = new StringWriter()
+          val renderContext = new DefaultRenderContext(template.source.uri, engine, new PrintWriter(out))
+          renderContext.attributes("columnsDefinitions") = context.columnsDefinitions
+          renderContext.attributes("rows") = context.rows
+          renderContext.attributes("z") = context
+          template.render(renderContext)
+          out.getBuffer.toString
+        }
+        case _ => throw new InterpreterException(s"Template not found for ${context.paragraphId}")
+      }
+    }
+
+    /**
+      * Compile and cache TemplateSource to avoid compiling template text for each invocations
+      * @param context
+      * @param text
+      */
+    def compile(context: InterpreterContext, text: String): Unit = {
+      val newMD5 = Hashing.md5().hashBytes(text.getBytes)
+
+      (for ((md5, template) <- templates.get(context.getParagraphId)
+            if newMD5.equals(md5))
+        yield template) match {
+        case None => templates += context.getParagraphId -> (newMD5, engine.compileSsp(text))
+        case _ =>
+      }
+    }
+  }
 
   object TableDisplay {
 

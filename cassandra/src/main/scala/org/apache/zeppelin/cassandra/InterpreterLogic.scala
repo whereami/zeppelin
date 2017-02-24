@@ -27,12 +27,11 @@ import java.util.concurrent.ConcurrentHashMap
 import com.datastax.driver.core.DataType.Name._
 import com.datastax.driver.core._
 import com.datastax.driver.core.exceptions.DriverException
-import com.datastax.driver.core.policies.{LoggingRetryPolicy, FallthroughRetryPolicy, DowngradingConsistencyRetryPolicy, Policies}
+import com.datastax.driver.core.policies.{DowngradingConsistencyRetryPolicy, FallthroughRetryPolicy, LoggingRetryPolicy, Policies}
 import org.apache.zeppelin.cassandra.TextBlockHierarchy._
-import org.apache.zeppelin.display.AngularObjectRegistry
 import org.apache.zeppelin.display.Input.ParamOption
 import org.apache.zeppelin.interpreter.InterpreterResult.Code
-import org.apache.zeppelin.interpreter.{InterpreterException, InterpreterResult, InterpreterContext}
+import org.apache.zeppelin.interpreter.{InterpreterContext, InterpreterException, InterpreterResult}
 import org.slf4j.LoggerFactory
 import scala.collection.JavaConversions._
 import scala.collection.JavaConverters._
@@ -61,7 +60,7 @@ case class CassandraQueryOptions(consistency: Option[ConsistencyLevel],
  * Singleton object to store constants
  */
 object InterpreterLogic {
-  
+
   val CHOICES_SEPARATOR : String = """\|"""
   val VARIABLE_PATTERN = """\{\{[^}]+\}\}""".r
   val SIMPLE_VARIABLE_DEFINITION_PATTERN = """\{\{([^=]+)=([^=]+)\}\}""".r
@@ -107,6 +106,13 @@ class InterpreterLogic(val session: Session)  {
       val protocolVersion = session.getCluster.getConfiguration.getProtocolOptions.getProtocolVersion
 
       val queries:List[AnyBlock] = parseInput(stringStatements)
+
+      val templates = queries.filter(_.blockType == TemplateBlock).map(_.get[Template])
+
+      if(templates.nonEmpty) {
+        //Use only last template
+        DisplaySystem.TemplateDisplay.compile(context, templates.last.text)
+      }
 
       val queryOptions = extractQueryOptions(queries
         .filter(_.blockType == ParameterBlock)
@@ -156,7 +162,7 @@ class InterpreterLogic(val session: Session)  {
 
       if (results.nonEmpty) {
         results.last match {
-          case(res: ResultSet, st: Statement) => buildResponseMessage((res, st), protocolVersion)
+          case(res: ResultSet, st: Statement) => buildResponseMessage(context, (res, st), protocolVersion, templates.nonEmpty)
           case(output: String, _) => new InterpreterResult(Code.SUCCESS, output)
           case _ => throw new InterpreterException(s"Cannot parse result type : ${results.last}")
         }
@@ -185,7 +191,7 @@ class InterpreterLogic(val session: Session)  {
     }
   }
 
-  def buildResponseMessage(lastResultSet: (ResultSet,Statement), protocolVersion: ProtocolVersion): InterpreterResult = {
+  def buildResponseMessage(context:InterpreterContext, lastResultSet: (ResultSet,Statement), protocolVersion: ProtocolVersion, withTemplate:Boolean): InterpreterResult = {
     val output = new StringBuilder()
     val rows: collection.mutable.ArrayBuffer[Row] = ArrayBuffer()
 
@@ -202,20 +208,27 @@ class InterpreterLogic(val session: Session)  {
 
 
     if (rows.nonEmpty) {
-      // Create table headers
-      output
-        .append("%table ")
-        .append(columnsDefinitions.map { case (columnName, _) => columnName }.mkString("\t")).append("\n")
 
-      // Deserialize Data
-      rows.foreach {
-        row => {
-          val data = columnsDefinitions.map {
-            case (name, dataType) => {
-              if (row.isNull(name)) null else row.getObject(name)
+      if(withTemplate){
+        //Create output with template
+        output
+          .append(enhancedSession.execute(new TemplateContext(context, columnsDefinitions, rows)))
+      } else {
+        // Create table headers
+        output
+          .append("%table ")
+          .append(columnsDefinitions.map { case (columnName, _) => columnName }.mkString("\t")).append("\n")
+
+        // Deserialize Data
+        rows.foreach {
+          row => {
+            val data = columnsDefinitions.map {
+              case (name, dataType) => {
+                if (row.isNull(name)) null else row.getObject(name)
+              }
             }
+            output.append(data.mkString("\t")).append("\n")
           }
-          output.append(data.mkString("\t")).append("\n")
         }
       }
     } else {

@@ -338,6 +338,19 @@ public class InterpreterLogicTest {
         assertThat(calendar.get(Calendar.MILLISECOND)).isEqualTo(123);
     }
 
+    @Test
+    public void should_parse_template_block() throws Exception {
+        //Given
+        String input = "USE TEMPLATE \"\"\"<%@ rows: Seq[Row]%>\n<pre><%=rows%></pre>\"\"\";";
+
+        //When
+        final List<AnyBlock> anyBlocks = this.<AnyBlock>toJavaList(helper.parseInput(input));
+
+        //Then
+        assertThat(anyBlocks).hasSize(1);
+        assertThat(anyBlocks.get(0)).isInstanceOf(Template.class);
+    }
+
     private <A> scala.collection.immutable.List<A> toScalaList(java.util.List<A> list)  {
         return scala.collection.JavaConversions.collectionAsScalaIterable(list).toList();
     }

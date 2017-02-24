@@ -961,4 +961,15 @@ class ParagraphParserTest extends FlatSpec
       case parser.Success(List(SimpleStm(query)), _) =>
     }
   }
+
+  "Parser" should "parse template statement" in {
+    //Given
+    val query:String = "USE TEMPLATE \"\"\"<%@ rows: Seq[Row]%>\n<pre><%=rows%></pre>\"\"\";";
+
+    //When
+    val parsed = parser.parseAll(parser.template, query)
+
+    //Then
+    parsed should matchPattern { case parser.Success(Template("<%@ rows: Seq[Row]%>\n<pre><%=rows%></pre>"), _) =>}
+  }
 }

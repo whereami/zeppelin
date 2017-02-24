@@ -25,6 +25,7 @@ import com.datastax.driver.core._
 object TextBlockHierarchy {
 
   sealed trait BlockType
+  object TemplateBlock extends BlockType
   object ParameterBlock extends BlockType
   object StatementBlock extends BlockType
   object DescribeBlock extends BlockType
@@ -37,6 +38,8 @@ object TextBlockHierarchy {
   }
 
   case class Comment(text:String) extends AnyBlock(CommentBlock)
+
+  case class Template(text:String) extends AnyBlock(TemplateBlock)
 
   sealed trait ParameterType
   object ConsistencyParam extends ParameterType

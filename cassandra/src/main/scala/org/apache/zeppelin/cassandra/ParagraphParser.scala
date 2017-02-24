@@ -18,10 +18,10 @@ package org.apache.zeppelin.cassandra
 
 import com.datastax.driver.core._
 import org.apache.zeppelin.cassandra.CassandraInterpreter._
-import org.apache.zeppelin.interpreter.InterpreterException
-import scala.util.matching.Regex
-import scala.util.parsing.combinator._
 import org.apache.zeppelin.cassandra.TextBlockHierarchy._
+import org.apache.zeppelin.interpreter.InterpreterException
+
+import scala.util.parsing.combinator._
 
 /**
   * Parser using Scala combinator parsing
@@ -32,6 +32,8 @@ import org.apache.zeppelin.cassandra.TextBlockHierarchy._
   *
   */
 object ParagraphParser {
+
+  val TEMPLATE_PATTERN = """^\s*USE\s+TEMPLATE\s+(?s)"{3}(.+)"{3};\s*""".r
 
   val CONSISTENCY_LEVEL_PATTERN = ConsistencyLevel.values().toList
     .map(_.name()).filter(!_.contains("SERIAL")).mkString("""^\s*@consistency\s*=\s*(""", "|" , """)\s*$""").r
@@ -141,6 +143,8 @@ class ParagraphParser extends RegexParsers{
 
   def multiLineComment: Parser[Comment] = """(?s)/\*(.*)\*/""".r ^^ {case text => Comment(text.trim.replaceAll("""/\*""","").replaceAll("""\*/""",""))}
 
+  // Template
+  def template: Parser[Template]  = TEMPLATE_PATTERN ^^ { case x => extractTemplate(x.trim) }
   //Query parameters
   def consistency: Parser[Consistency] = """\s*@consistency.+""".r ^^ {case x => extractConsistency(x.trim)}
   def serialConsistency: Parser[SerialConsistency] = """\s*@serialConsistency.+""".r ^^ {case x => extractSerialConsistency(x.trim)}
@@ -189,7 +193,7 @@ class ParagraphParser extends RegexParsers{
   def batch: Parser[BatchStm] = beginBatch ~ mutationStatements ~ applyBatch ^^ {
     case begin ~ cqls ~ end => BatchStm(extractBatchType(begin),cqls)}
 
-  def queries:Parser[List[AnyBlock]] = rep(singleLineComment | multiLineComment | consistency | serialConsistency |
+  def queries:Parser[List[AnyBlock]] = rep(singleLineComment | multiLineComment | template | consistency | serialConsistency |
     timestamp | retryPolicy | fetchSize | requestTimeOut | removePrepare | prepare | bind | batch | describeCluster |
     describeKeyspace | describeKeyspaces |
     describeTable | describeTables |
@@ -198,6 +202,14 @@ class ParagraphParser extends RegexParsers{
     describeAggregate | describeAggregates |
     describeMaterializedView | describeMaterializedViews |
     helpCommand | createFunctionStatement | genericStatement)
+
+  def extractTemplate(text: String): Template = {
+    text match {
+      case TEMPLATE_PATTERN(template) => Template(template)
+      case _ => throw new InterpreterException(s"Invalid syntax for template. " +
+        s"It should comply to the pattern ${TEMPLATE_PATTERN.toString}")
+    }
+  }
 
   def extractConsistency(text: String): Consistency = {
     text match {

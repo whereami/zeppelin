@@ -29,6 +29,7 @@ import scala.collection.JavaConverters._
  */
 class EnhancedSession(val session: Session) {
 
+  val templateDisplay = DisplaySystem.TemplateDisplay
   val clusterDisplay = DisplaySystem.ClusterDisplay
   val keyspaceDisplay = DisplaySystem.KeyspaceDisplay
   val tableDisplay = DisplaySystem.TableDisplay
@@ -43,6 +44,10 @@ class EnhancedSession(val session: Session) {
   val HTML_MAGIC = "%html \n"
 
   val displayNoResult: String = HTML_MAGIC + noResultDisplay.formatNoResult
+
+  def execute(context: TemplateContext): String = {
+    HTML_MAGIC + templateDisplay.format(context)
+  }
 
   def displayExecutionStatistics(query: String, execInfo: ExecutionInfo): String = {
     HTML_MAGIC + noResultDisplay.noResultWithExecutionInfo(query, execInfo)
@@ -198,6 +203,7 @@ class EnhancedSession(val session: Session) {
       case x:DescribeMaterializedViewsCmd => execute(x)
       case x:HelpCmd => execute(x)
       case x:Statement => session.execute(x)
+      case x:TemplateContext => execute(x)
       case _ => throw new InterpreterException(s"Cannot execute statement '$st' of type ${st.getClass}")
     }
   }
