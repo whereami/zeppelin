@@ -592,7 +592,7 @@ USE TEMPLATE """
   <tbody>
     <% rows.foreach{row => %>
     <tr>
-      <%= columnsDefinitions.map{case (name, dataType) => if(row.isNull(name)) \"NULL\" else row.getObject(name).toString}.mkString("<td>", "</td><td>", "</td>") %>
+      <%= columnsDefinitions.map{case (name, dataType) => if(row.isNull(name)) "NULL" else row.getObject(name).toString}.mkString("<td>", "</td><td>", "</td>") %>
     </tr>
     <%}%>
 </tbody>
