@@ -92,6 +92,11 @@ The **Cassandra** interpreter accepts the following commands
       <td>All CQL-compatible statements (SELECT, INSERT, CREATE ...)</td>
       <td>All CQL statements are executed directly against the Cassandra server</td>
     </tr>
+     <tr>
+      <td nowrap>Template statement</td>
+      <td>USE TEMPLATE """..."""</td>
+      <td>Print out the result set of CQL using user defined scalate template.</td>
+    </tr>
   </table>
 </center>
 
@@ -554,6 +559,73 @@ It is also possible to use dynamic forms for **prepared statements**:
     @bind[select]=='${performer=Sheryl Crow|Doof|Fanfarlo|Los Paranoia}', '${style=Rock}'
 
 {% endraw %}
+
+## Using Template
+
+The Cassandra interpreter is faster and lighter than other script languages such as spark, pyspark interpreters, 
+because it simply executes the CQL and retrieves the result set unlike other script languages interpreters.
+
+By the way, this interpreter can't bind the result set object in the ZeppelinContext like spark interpreter.
+So, it is not easy to customize the output of CQL result set.
+
+**USE TEMPLATE** statement makes you customize the output using scalate template engine which is used by Zeppelin Internal.
+
+Some basic usage is followed.
+
+```sql
+USE TEMPLATE """
+#import(scala.collection.mutable._)
+<% escapeMarkup = false %>
+<%@ val columnsDefinitions: Seq[(String, DataType)]%>
+<%@ val rows: Seq[Row]%>
+<%@ val z: TemplateContext%>
+
+<link href="//cdn.datatables.net/1.10.13/css/jquery.dataTables.min.css"  rel="stylesheet">
+<script src="http://ajax.googleapis.com/ajax/libs/jquery/1.11.3/jquery.min.js"></script>
+<script src="http://cdn.datatables.net/1.10.13/js/jquery.dataTables.min.js"></script>
+
+<h1><%=z.angular("title")%></h1>
+<table class='resultTable'>
+  <thread>
+    <%= columnsDefinitions.map(_._1).mkString("<th>", "</th><th>", "</th>") %>
+  </thead>
+  <tbody>
+    <% rows.foreach{row => %>
+    <tr>
+      <%= columnsDefinitions.map{case (name, dataType) => if(row.isNull(name)) \"NULL\" else row.getObject(name).toString}.mkString("<td>", "</td><td>", "</td>") %>
+    </tr>
+    <%}%>
+</tbody>
+</table>
+
+<script>
+$(document).ready(function(){
+    $('table.resultTable').DataTable({
+        "scrollY":        "400px",
+        "paging":         false
+    });
+});
+</script>
+""";
+
+SELECT * FROM zeppelin.artists;
+```
+**USE TEMPLATE** statement wraps the template code with triple quotes(`"""`), now only [ssp](https://scalate.github.io/scalate/documentation/ssp-reference.html) is supported for a template language.
+
+**#import(...)** is an import directive which is like import in scala.
+
+**<%@...%>** is an attribute bound from Cassandra Interpreter. There are three bound attributes: `columnsDefinitions:Seq[(String, DataType)]`, `rows:Seq[Row]` and `z:TemplateContext`.
+
+**<%...%>** is a scala code block which is is evaluated but not inserted into the document.
+
+**<%=...%>** is an expression which is evaluated and the output is inserted into the document.
+
+>Please note that ssp supports both expression `${...}` and `<%...%>`. 
+But Zeppelin use `${...}` syntax to bind the angular object. 
+So please avoid use `${...}` syntax in your template. 
+If you want to get some angular objects, use `z.angular("attribute_name")` of `TemplateContext` instead of `${...}` syntax.
+
+For more detail of scalate, please refer to [Scalate Github](https://scalate.github.io/scalate/).
 
 ## Shared states
 
